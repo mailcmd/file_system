@@ -59,4 +59,9 @@ defmodule FileSystem do
   def subscribe(pid) do
     GenServer.call(pid, :subscribe)
   end
+
+  def stop(pid) do
+    # Send to worker :stop
+    GenServer.call(pid, :stop)
+  end
 end

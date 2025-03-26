@@ -9,6 +9,7 @@ defmodule FileSystem.Backends.FSInotify do
   ## Backend Options
 
     * `:recursive` (bool, default: true), monitor directories and their contents recursively.
+    * `:events` (list, default: [:modify, :create, :delete, :attrib]),
 
   ## Executable File Path
 
@@ -36,6 +37,7 @@ defmodule FileSystem.Backends.FSInotify do
   use GenServer
   @behaviour FileSystem.Backend
   @sep_char <<1>>
+  @default_events [:modify, :create, :delete, :attrib]
 
   def bootstrap do
     exec_file = executable_path()
@@ -84,28 +86,19 @@ defmodule FileSystem.Backends.FSInotify do
       {dirs, rest} ->
         format = ["%w", "%e", "%f"] |> Enum.join(@sep_char) |> to_charlist
 
-        args = [
-          ~c"-e",
-          ~c"modify",
-          ~c"-e",
-          ~c"close_write",
-          ~c"-e",
-          ~c"moved_to",
-          ~c"-e",
-          ~c"moved_from",
-          ~c"-e",
-          ~c"create",
-          ~c"-e",
-          ~c"delete",
-          ~c"-e",
-          ~c"attrib",
-          ~c"--format",
-          format,
-          ~c"--quiet",
-          ~c"-m",
-          ~c"-r"
-          | dirs |> Enum.map(&Path.absname/1) |> Enum.map(&to_charlist/1)
-        ]
+        {events, rest} = Keyword.pop(rest, :events, @default_events)
+
+        args =
+          convert_events(events)
+          ++
+          [
+            ~c"--format",
+            format,
+            ~c"--quiet",
+            ~c"-m",
+            ~c"-r"
+            | dirs |> Enum.map(&Path.absname/1) |> Enum.map(&to_charlist/1)
+          ]
 
         parse_options(rest, args)
     end
@@ -179,6 +172,16 @@ defmodule FileSystem.Backends.FSInotify do
     end
   end
 
+  @doc false
+  def handle_call(:status, _, state) do
+    {:reply, state, state}
+  end
+
+  @doc false
+  def handle_call(:stop, _, state) do
+    {:reply, Port.close(state.port), state}
+  end
+
   def handle_info({port, {:data, {:eol, line}}}, %{port: port} = state) do
     {file_path, events} = line |> parse_line
     send(state.worker_pid, {:backend_file_event, self(), {file_path, events}})
@@ -219,4 +222,15 @@ defmodule FileSystem.Backends.FSInotify do
   defp convert_flag("CLOSE"), do: :closed
   defp convert_flag("ATTRIB"), do: :attribute
   defp convert_flag(_), do: :undefined
+
+  defp convert_events([]), do: []
+  defp convert_events([event | events]) do
+    convert_event(event) ++ convert_events(events)
+  end
+
+  defp convert_event(:modify), do: [~c"-e", ~c"modify", ~c"-e", ~c"close_write"]
+  defp convert_event(:create), do: [~c"-e", ~c"create", ~c"-e", ~c"moved_from"]
+  defp convert_event(:delete), do: [~c"-e", ~c"delete", ~c"-e", ~c"moved_to"]
+  defp convert_event(:attrib), do: [~c"-e", ~c"attrib"]
+  defp convert_event(_), do: []
 end

@@ -29,6 +29,16 @@ defmodule FileSystem.Worker do
   end
 
   @doc false
+  def handle_call(:status, _, state) do
+    {:reply, state, state}
+  end
+
+  @doc false
+  def handle_call(:stop, _, state) do
+    {:reply, GenServer.call(state.backend_pid, :stop), state}
+  end
+
+  @doc false
   def handle_call(:subscribe, {pid, _}, state) do
     ref = Process.monitor(pid)
     state = put_in(state, [:subscribers, ref], pid)
