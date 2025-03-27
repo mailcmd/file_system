@@ -63,5 +63,6 @@ defmodule FileSystem do
   def stop(pid) do
     # Send to worker :stop
     GenServer.call(pid, :stop)
+    GenServer.stop(pid, :normal)
   end
 end

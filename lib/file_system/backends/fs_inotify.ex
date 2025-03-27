@@ -89,7 +89,7 @@ defmodule FileSystem.Backends.FSInotify do
         {events, rest} = Keyword.pop(rest, :events, @default_events)
 
         args =
-          convert_events(events)
+          convert_event_to_flags(events)
           ++
           [
             ~c"--format",
@@ -223,14 +223,14 @@ defmodule FileSystem.Backends.FSInotify do
   defp convert_flag("ATTRIB"), do: :attribute
   defp convert_flag(_), do: :undefined
 
-  defp convert_events([]), do: []
-  defp convert_events([event | events]) do
-    convert_event(event) ++ convert_events(events)
+  defp convert_event_to_flags([]), do: []
+  defp convert_event_to_flags([event | events]) do
+    convert_event_to_flag(event) ++ convert_event_to_flags(events)
   end
 
-  defp convert_event(:modify), do: [~c"-e", ~c"modify", ~c"-e", ~c"close_write"]
-  defp convert_event(:create), do: [~c"-e", ~c"create", ~c"-e", ~c"moved_from"]
-  defp convert_event(:delete), do: [~c"-e", ~c"delete", ~c"-e", ~c"moved_to"]
-  defp convert_event(:attrib), do: [~c"-e", ~c"attrib"]
-  defp convert_event(_), do: []
+  defp convert_event_to_flag(:modified), do: [~c"-e", ~c"modify", ~c"-e", ~c"close_write"]
+  defp convert_event_to_flag(:created), do: [~c"-e", ~c"create", ~c"-e", ~c"moved_from"]
+  defp convert_event_to_flag(:deleted), do: [~c"-e", ~c"delete", ~c"-e", ~c"moved_to"]
+  defp convert_event_to_flag(:attribute), do: [~c"-e", ~c"attrib"]
+  defp convert_event_to_flag(_), do: []
 end
