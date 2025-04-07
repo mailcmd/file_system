@@ -88,35 +88,40 @@ defmodule FileSystem.Backends.FSInotify do
 
         {events, rest} = Keyword.pop(rest, :events, @default_events)
 
-        args =
-          convert_event_to_flags(events)
-          ++
-          [
-            ~c"--format",
-            format,
-            ~c"--quiet",
-            ~c"-m",
-            ~c"-r"
-            | dirs |> Enum.map(&Path.absname/1) |> Enum.map(&to_charlist/1)
-          ]
+        convert_events(events)
+        ++
+        [
+          ~c"--format",
+          format,
+          ~c"--quiet",
+          ~c"-m"
+        ]
+        ++
+        parse_options(rest, [])
+        ++
+        (dirs |> Enum.map(&Path.absname/1) |> Enum.map(&to_charlist/1))
 
-        parse_options(rest, args)
     end
   end
 
-  defp parse_options([], result), do: {:ok, result}
+  # defp parse_options([], result), do: {:ok, result}
+  defp parse_options([], result), do: result
 
-  defp parse_options([{:recursive, true} | t], result) do
+  defp parse_options([{:recursive, false} | t], result) do
     parse_options(t, result)
   end
 
-  defp parse_options([{:recursive, false} | t], result) do
-    parse_options(t, result -- [~c"-r"])
+  defp parse_options([{:recursive, true} | t], result) do
+    parse_options(t, result ++ [~c"-r"])
   end
 
   defp parse_options([{:recursive, value} | t], result) do
     Logger.error("unknown value `#{inspect(value)}` for recursive, ignore")
     parse_options(t, result)
+  end
+
+  defp parse_options([{:exclude_pattern, pattern} | t], result) do
+    parse_options(t, result ++ [~c"--exclude", String.to_charlist(pattern)])
   end
 
   defp parse_options([h | t], result) do
@@ -132,7 +137,7 @@ defmodule FileSystem.Backends.FSInotify do
     {worker_pid, rest} = Keyword.pop(args, :worker_pid)
 
     case parse_options(rest) do
-      {:ok, port_args} ->
+      port_args when is_list(port_args) ->
         bash_args = [
           ~c"-c",
           ~c"#{executable_path()} \"$0\" \"$@\" & PID=$!; read a; kill -KILL $PID"
@@ -223,14 +228,14 @@ defmodule FileSystem.Backends.FSInotify do
   defp convert_flag("ATTRIB"), do: :attribute
   defp convert_flag(_), do: :undefined
 
-  defp convert_event_to_flags([]), do: []
-  defp convert_event_to_flags([event | events]) do
-    convert_event_to_flag(event) ++ convert_event_to_flags(events)
+  defp convert_events([]), do: []
+  defp convert_events([event | events]) do
+    convert_event(event) ++ convert_events(events)
   end
 
-  defp convert_event_to_flag(:modified), do: [~c"-e", ~c"modify", ~c"-e", ~c"close_write"]
-  defp convert_event_to_flag(:created), do: [~c"-e", ~c"create", ~c"-e", ~c"moved_from"]
-  defp convert_event_to_flag(:deleted), do: [~c"-e", ~c"delete", ~c"-e", ~c"moved_to"]
-  defp convert_event_to_flag(:attribute), do: [~c"-e", ~c"attrib"]
-  defp convert_event_to_flag(_), do: []
+  defp convert_event(:modify), do: [~c"-e", ~c"modify", ~c"-e", ~c"close_write"]
+  defp convert_event(:create), do: [~c"-e", ~c"create", ~c"-e", ~c"moved_from"]
+  defp convert_event(:delete), do: [~c"-e", ~c"delete", ~c"-e", ~c"moved_to"]
+  defp convert_event(:attrib), do: [~c"-e", ~c"attrib"]
+  defp convert_event(_), do: []
 end
